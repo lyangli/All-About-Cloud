@@ -76,8 +76,36 @@ Resources:
             systemctl enable httpd;
             echo "Hello word from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
 
+  myWebApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref myWebALBSGP
+      Subnets:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
+
 
   myWebSGP:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+
+  myWebALBSGP:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
