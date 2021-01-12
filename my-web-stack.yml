@@ -1,0 +1,37 @@
+Parameters:
+  NetworkStackName:
+    Type: String
+    Default: my-Vpc
+    Description: Stack name for the network stack.
+  KeyName:
+    Type: String
+    Default: aws_first_key
+    Description: AWS key name for SSH connection to server.
+
+Resources:
+  myWebEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      SecurityGroupIds:
+        - !GetAtt myWebSGP.GroupId
+      KeyName: !Ref KeyName
+      ImageId: ami-00b8d9cb8a7161e41
+      InstanceType: t2.micro
+      SubnetId: 
+        Fn::ImportValue:
+          !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+
+  myWebSGP:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
+      VpcId: !ImportValue my-Vpc-VPCID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
