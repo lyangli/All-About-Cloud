@@ -131,7 +131,13 @@ Resources:
 
 #Outputs for other stacks
 Outputs:
-  
+
+  myVPCID:
+    Description: The ID for myVPC
+    Value: !Ref myVPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCID"
+      
   
   myPublicSubnet1aID:
     Description: The ID for Public Subnet 1a
