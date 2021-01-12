@@ -129,8 +129,29 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref myInternetGateway
 
+#Output for other stacks
+Output:
+  
+  
+  myPublicSubnet1aID:
+    Description: The ID for Public Subnet 1a
+    Value: !Ref myPublicSubnet1a
+  myPublicSubnet1bID:
+    Description: The ID for Public Subnet 1b
+    Value: !Ref myPublicSubnet1b
+  myPublicSubnet1cID:
+    Description: The ID for Public Subnet 1c
+    Value: !Ref myPublicSubnet1c
 
-
+  myPrivateSubnet1aID:
+    Description: The ID for Private Subnet 1a
+    Value: !Ref myPrivateSubnet1a
+  myPrivateSubnet1bID:
+    Description: The ID for Private Subnet 1b
+    Value: !Ref myPrivateSubnet1b
+  myPrivateSubnet1cID:
+    Description: The ID for Private Subnet 1c
+    Value: !Ref myPrivateSubnet1c
 
 
 
