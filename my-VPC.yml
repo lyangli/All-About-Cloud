@@ -1,3 +1,5 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A network stack for my-first-aws-cloudformation-project
 Resources:
   
 
