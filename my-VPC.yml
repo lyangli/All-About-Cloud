@@ -129,29 +129,40 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref myInternetGateway
 
-#Output for other stacks
-Output:
+#Outputs for other stacks
+Outputs:
   
   
   myPublicSubnet1aID:
     Description: The ID for Public Subnet 1a
     Value: !Ref myPublicSubnet1a
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PublicSubnet1a"
   myPublicSubnet1bID:
     Description: The ID for Public Subnet 1b
     Value: !Ref myPublicSubnet1b
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PublicSubnet1b"
   myPublicSubnet1cID:
     Description: The ID for Public Subnet 1c
     Value: !Ref myPublicSubnet1c
-
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PublicSubnet1c"
   myPrivateSubnet1aID:
     Description: The ID for Private Subnet 1a
     Value: !Ref myPrivateSubnet1a
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PrivateSubnet1a"
   myPrivateSubnet1bID:
     Description: The ID for Private Subnet 1b
     Value: !Ref myPrivateSubnet1b
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PrivateSubnet1b"
   myPrivateSubnet1cID:
     Description: The ID for Private Subnet 1c
     Value: !Ref myPrivateSubnet1c
+    Export:
+      Name: !Sub "${AWS::StackName}-SubnetID-PrivateSubnet1c"
 
 
 
