@@ -3,30 +3,82 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: A web stack for my-first-aws-cloudformation-project
 
 Parameters:
+  
   NetworkStackName:
     Type: String
     Default: my-Vpc
     Description: Stack name for the network stack.
+  
   KeyName:
     Type: String
     Default: aws_first_key
     Description: AWS key name for SSH connection to server.
 
-Resources:
-  myWebEC2:
-    Type: AWS::EC2::Instance
+
+Resources:  
+
+#  myWebEC2:
+#    Type: AWS::EC2::Instance
+#    Properties:
+#      SecurityGroupIds:
+#        - !GetAtt myWebSGP.GroupId
+#      KeyName: !Ref KeyName
+#      ImageId: ami-00b8d9cb8a7161e41
+#      InstanceType: t2.micro
+#      SubnetId: 
+#        Fn::ImportValue:
+#          !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+
+  myWebASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      SecurityGroupIds:
-        - !GetAtt myWebSGP.GroupId
-      KeyName: !Ref KeyName
-      ImageId: ami-00b8d9cb8a7161e41
-      InstanceType: t2.micro
-      SubnetId: 
-        Fn::ImportValue:
-          !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+      AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
+      MinSize: 0
+      MaxSize: 1
+      DesiredCapacity: 1
+      HealthCheckGracePeriod: 90
+      AvailabilityZones:
+        - !Select
+          - 0
+          - Fn::GetAZs: !Ref 'AWS::Region'
+        - !Select
+          - 1
+          - Fn::GetAZs: !Ref 'AWS::Region'
+        - !Select
+          - 2
+          - Fn::GetAZs: !Ref 'AWS::Region'
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref myWebLaunchTemplate
+        Version: !GetAtt myWebLaunchTemplate.DefaultVersionNumber
+
+
+  myWebLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateData:
+        KeyName: !Ref KeyName
+        ImageId: ami-00b8d9cb8a7161e41
+        InstanceType: t2.micro
+        SecurityGroupIds:
+          - !GetAtt myWebSGP.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -ex
+            sudo su;
+            yum update -y;
+            yum install httpd -y;
+            service httpd start;
+            systemctl enable httpd;
+            echo "Hello word from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
+
 
   myWebSGP:
-    Type: 'AWS::EC2::SecurityGroup'
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
       VpcId: !ImportValue my-Vpc-VPCID
