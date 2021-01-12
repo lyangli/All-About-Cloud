@@ -54,6 +54,9 @@ Resources:
       LaunchTemplate: 
         LaunchTemplateId: !Ref myWebLaunchTemplate
         Version: !GetAtt myWebLaunchTemplate.DefaultVersionNumber
+      TargetGroupARNs:
+        - !Ref myWebApplicationLoadBalancerTargetGroup
+      
 
 
   myWebLaunchTemplate:
@@ -76,6 +79,7 @@ Resources:
             systemctl enable httpd;
             echo "Hello word from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
 
+  
   myWebApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -87,6 +91,29 @@ Resources:
         - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
         - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
         - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
+
+
+  myWebApplicationLoadBalancerHTTPListerner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions:
+        - Type: forward
+          ForwardConfig:
+            TargetGroups: 
+              - TargetGroupArn: !Ref myWebApplicationLoadBalancerTargetGroup
+      LoadBalancerArn: !Ref myWebApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  
+  myWebApplicationLoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      TargetType: instance
 
 
   myWebSGP:
