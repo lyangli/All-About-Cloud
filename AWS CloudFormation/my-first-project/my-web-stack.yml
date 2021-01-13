@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: A web stack for my-first-aws-cloudformation-project
+Description: A web stack for my-first-project to understand and learn AWS CloudFormation 
 
 Parameters:
   
@@ -33,9 +33,9 @@ Resources:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
-      MinSize: 0
-      MaxSize: 1
-      DesiredCapacity: 1
+      MinSize: 3
+      MaxSize: 3
+      DesiredCapacity: 3
       HealthCheckGracePeriod: 90
       AvailabilityZones:
         - !Select
@@ -48,9 +48,9 @@ Resources:
           - 2
           - Fn::GetAZs: !Ref 'AWS::Region'
       VPCZoneIdentifier:
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
       LaunchTemplate: 
         LaunchTemplateId: !Ref myWebLaunchTemplate
         Version: !GetAtt myWebLaunchTemplate.DefaultVersionNumber
@@ -77,7 +77,7 @@ Resources:
             yum install httpd -y;
             service httpd start;
             systemctl enable httpd;
-            echo "Hello word from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
+            echo "Hello world from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
 
   
   myWebApplicationLoadBalancer:
@@ -135,14 +135,10 @@ Resources:
   myWebALBSGP:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
+      GroupDescription: Enable HTTP (TCP 80) to Load Balancer.
       VpcId: 
         Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: '22'
-          ToPort: '22'
-          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: '80'
           ToPort: '80'
