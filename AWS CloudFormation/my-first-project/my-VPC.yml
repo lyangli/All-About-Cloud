@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: A network stack for my-first-aws-cloudformation-project
+Description: A network stack for my-first-project to understand and learn AWS CloudFormation 
 
 Resources:
   
@@ -78,6 +78,18 @@ Resources:
       InternetGatewayId: !Ref myInternetGateway
       VpcId: !Ref myVPC
 
+  #Create Elastic IP for NAT Gateway
+  myEIP:
+    Type: AWS::EC2::EIP
+
+  #Create NAT gateway and asociate it with myEIP
+  myNatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: myEIP
+    Properties: 
+      AllocationId: !GetAtt myEIP.AllocationId
+      SubnetId: !Ref myPublicSubnet1a
+
 
   #Create Public & Private route table
   myRouteTablePublic:
@@ -134,6 +146,17 @@ Resources:
       RouteTableId: !Ref myRouteTablePublic
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref myInternetGateway
+
+  #Create NAT gateway route for private route table
+  myRoutetoNATGateway:
+    Type: AWS::EC2::Route
+    DependsOn: myNatGateway
+    Properties:
+      RouteTableId: !Ref myRouteTablePrivate
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref myNatGateway
+
+
 
 #Outputs for other stacks
 Outputs:
