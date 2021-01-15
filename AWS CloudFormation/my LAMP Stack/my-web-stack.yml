@@ -33,9 +33,9 @@ Resources:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
-      MinSize: 3
-      MaxSize: 3
-      DesiredCapacity: 3
+      MinSize: 0
+      MaxSize: 1
+      DesiredCapacity: 1
       HealthCheckGracePeriod: 90
       AvailabilityZones:
         - !Select
