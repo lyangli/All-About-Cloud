@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<head>
+<style>
+table.product {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head> 
+
+<h1>Product table</h1>
+<div id="config" style="display: block;">
+<h1>Database Configuration</h1>
+<form>
+  <label for="servername">Database Endpoint:</label><br>
+  <input type="text" id="servername" name="Server Name" size="100" value=""><br><br>
+  <label for="username">Username:</label><br>
+  <input type="text" id="username" name="User Name" value=""><br><br>
+  <label for="password">Password:</label><br>
+  <input type="password" id="password" name="password" value=""><br>
+</form> 
+<br>
+<button id="button_Connect" >Connect</button> 
+<br><br>
+</div>
+
+
+<div id="table" style="display: none;">
+<table id="productTable" class="product" style="width:50%">
+  <thead>
+    <tr>
+      <th>Product ID</th>
+      <th>Product Name</th>
+      <th>Quantity</th>
+    </tr>
+  </thead>
+  <tbody id="productTable_tbody">
+  </tbody>
+  <tbody>
+      <tr>
+      <td></td>
+      <td><input type="text" id="productName" name="Product Name" value=""></td>
+      <td><input type="text" id="qty" name="Quantity" value=""></td>
+    </tr>
+  </tbody>
+</table>
+
+<br>
+<button id="button_Insert" >Insert</button> 
+<br><br>
+Delete by productID:  <input type="text" id="productID_delete" name="Product ID to delete" value="">
+<button id="button_Delete" >Delete</button> 
+
+</div>
+
+<script>
+$(document).ready(function() {
+
+  $("#button_Connect").click(function() {
+    var servername = $("#servername").val();  
+    var username = $("#username").val();
+    var password = $("#password").val();  
+    $.ajax({  
+         type:"POST",  
+         url:"create.php",  
+         data:"servername="+servername+'&username='+username+'&password='+password,  
+         success:function(data){
+            var response = JSON.parse(data)  
+            //alert(create_response.query);
+            //alert(data);
+            if (response.error == undefined) {
+              $("#productTable_tbody").html(response.query);
+              $("#config").hide(); 
+              $("#table").show();
+            } else {
+              alert(response.error);
+            }
+         }  
+      });
+  });
+
+  $("#button_Insert").click(function(){  
+     var servername = $("#servername").val();  
+     var username = $("#username").val();
+     var password = $("#password").val();  
+     var productName = $("#productName").val();
+     var qty = $("#qty").val();  
+      $.ajax({  
+         type:"POST",  
+         url:"insert.php",  
+         data:"servername="+servername+'&username='+username+'&password='+password+'&productName='+productName+'&qty='+qty,  
+         success:function(data){  
+            //alert(data);  
+            //location.reload();
+            var response = JSON.parse(data)
+            //alert(response.query)
+            if (response.error == undefined) {
+              $("#productTable_tbody").html(response.query);
+            } else {
+              alert(response.error);
+            }
+         }  
+      });  
+   });   
+
+  $("#button_Delete").click(function(){  
+     var servername = $("#servername").val();  
+     var username = $("#username").val();
+     var password = $("#password").val();  
+     var productID = $("#productID_delete").val();   
+      $.ajax({  
+         type:"POST",  
+         url:"deleteByID.php",  
+         data:"servername="+servername+'&username='+username+'&password='+password+"&productID="+productID,  
+         success:function(data){  
+            //alert(data);  
+            //location.reload();
+            var response = JSON.parse(data)
+            //alert(response.query)
+            if (response.error == undefined) {
+              $("#productTable_tbody").html(response.query);
+            } else {
+              alert(response.error);
+            }
+         }  
+      });  
+   });   
+
+});
+</script>
