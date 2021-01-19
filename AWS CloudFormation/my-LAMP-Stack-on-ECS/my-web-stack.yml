@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: A web stack for my-first-project to understand and learn AWS CloudFormation 
+Description: A lamp stack for my-lamp-stack-on-ECS  
 
 Parameters:
   
   NetworkStackName:
     Type: String
-    Default: my-Vpc-Stack
+    Default: my-lamp-network
     Description: Stack name for the network stack.
   
   KeyName:
@@ -14,72 +14,129 @@ Parameters:
     Default: aws_first_key
     Description: AWS key name for SSH connection to server.
 
+Mappings: 
+  RegionMapToAMI: 
+    us-east-1:
+      ECS: ami-0dc161e2e5f144ffc
+    us-east-2:
+      ECS: ami-09f644e1caad2d877
+    us-west-1:
+      ECS: ami-00db7974d178c2536
+    us-west-2:
+      ECS: ami-0d927e3ac55a7b26f
+    eu-west-1:
+      ECS: ami-0024a6c3ca72bd336
+    ap-east-1:
+      ECS: ami-0dc161e2e5f144ffc
+    ap-northeast-1:
+      ECS: ami-0ccf28d7b4966979d
+    ap-southeast-1:
+      ECS: ami-08ce8fab6f3298bec
+
 
 Resources:  
+  
+  #Create ECS Cluster
+  myWebECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
 
-#  myWebEC2:
-#    Type: AWS::EC2::Instance
-#    Properties:
-#      SecurityGroupIds:
-#        - !GetAtt myWebSGP.GroupId
-#      KeyName: !Ref KeyName
-#      ImageId: ami-00b8d9cb8a7161e41
-#      InstanceType: t2.micro
-#      SubnetId: 
-#        Fn::ImportValue:
-#          !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+  
+  
+  #Create ECS Capacity provider for ECS
+  myWebCapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: !Sub '${AWS::StackName}-capacityprovider'
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref myWebASGforECS
+        ManagedScaling:
+          MaximumScalingStepSize: 2
+          MinimumScalingStepSize: 1
+          TargetCapacity: 4
 
-  myWebASG:
+  
+  #Create ECS Task Definition
+  myWebECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub '${AWS::StackName}-container'
+        Image: lyangli/my-lamp-stack:latest
+        Cpu: 128
+        Memory: 48
+        PortMappings:
+        - ContainerPort: 80
+      Family: my-lamp-task-definition
+      NetworkMode: bridge
+
+  #Create ECS Service
+  myWebECSService:
+    Type: AWS::ECS::Service
+    DependsOn: myWebApplicationLoadBalancerHTTPListerner
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-service'
+      Cluster: !Ref myWebECSCluster
+      LaunchType: EC2
+      DesiredCount: 2
+      TaskDefinition: !Ref myWebECSTaskDefinition
+      LoadBalancers:
+      - ContainerName: !Sub '${AWS::StackName}-container'
+        ContainerPort: 80
+        TargetGroupArn: !Ref myWebApplicationLoadBalancerTargetGroup
+
+
+  #Create Auto Scaling Group for ECS
+  myWebASGforECS:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
-      MinSize: 0
-      MaxSize: 1
-      DesiredCapacity: 1
+      MinSize: 1
+      MaxSize: 3
+      DesiredCapacity: 2
       HealthCheckGracePeriod: 90
       AvailabilityZones:
-        - !Select
-          - 0
-          - Fn::GetAZs: !Ref 'AWS::Region'
-        - !Select
-          - 1
-          - Fn::GetAZs: !Ref 'AWS::Region'
-        - !Select
-          - 2
-          - Fn::GetAZs: !Ref 'AWS::Region'
+      - !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      - !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      - !Select
+        - 2
+        - Fn::GetAZs: !Ref 'AWS::Region'
       VPCZoneIdentifier:
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
-        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
       LaunchTemplate: 
         LaunchTemplateId: !Ref myWebLaunchTemplate
         Version: !GetAtt myWebLaunchTemplate.DefaultVersionNumber
       TargetGroupARNs:
         - !Ref myWebApplicationLoadBalancerTargetGroup
-      
 
-
+  #Create launch template for ECS's Auto Scaling Group 
   myWebLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-ECS'
       LaunchTemplateData:
         KeyName: !Ref KeyName
-        ImageId: ami-00b8d9cb8a7161e41
+        ImageId: !FindInMap [RegionMapToAMI, !Ref "AWS::Region", ECS]
         InstanceType: t2.micro
+        IamInstanceProfile: 
+          Name: !Ref EC2InstanceProfile
         SecurityGroupIds:
           - !GetAtt myWebSGP.GroupId
         UserData:
           Fn::Base64: !Sub |
-            #!/bin/bash -ex
-            sudo su;
-            yum update -y;
-            yum install httpd -y;
-            service httpd start;
-            systemctl enable httpd;
-            echo "Hello world from $(hostname -f)<p>$(curl -s  http://169.254.169.254/latest/dynamic/instance-identity/document/)</p>" >/var/www/html/index.html;
+            #!/bin/bash
+            echo ECS_CLUSTER=${myWebECSCluster}  >> /etc/ecs/ecs.config
 
-  
+ 
+      
+  #Create Load Balancer for ECS's service
   myWebApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -93,6 +150,7 @@ Resources:
         - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
 
 
+  #Create listener for Application Load Balancer
   myWebApplicationLoadBalancerHTTPListerner:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties: 
@@ -105,7 +163,7 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  
+  #Create target group for Auto Scaling Group
   myWebApplicationLoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -115,7 +173,7 @@ Resources:
         Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
       TargetType: instance
 
-
+  #Create Security Group for ECS's containers
   myWebSGP:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -124,14 +182,19 @@ Resources:
         Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: '22'
-          ToPort: '22'
+          FromPort: 22
+          ToPort: 22
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: '80'
-          ToPort: '80'
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 31000
+          ToPort: 65535
           CidrIp: 0.0.0.0/0
 
+  #Create Security Group for Application Load Balancer
   myWebALBSGP:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -143,3 +206,108 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           CidrIp: 0.0.0.0/0
+
+
+  # A role used to allow AWS Autoscaling to inspect stats and adjust scaleable targets
+  # on your AWS account
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'application-autoscaling:*'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'ecs:DescribeServices'
+              - 'ecs:UpdateService'
+            Resource: '*'
+
+
+  EC2InstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Path: /
+        Roles: [!Ref 'EC2Role']
+  
+  # Role for the EC2 hosts. This allows the ECS agent on the EC2 hosts
+  # to communciate with the ECS control plane, as well as download the docker
+  # images from ECR to run on your host.
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:CreateCluster'
+              - 'ecs:DeregisterContainerInstance'
+              - 'ecs:DiscoverPollEndpoint'
+              - 'ecs:Poll'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:Submit*'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+            Resource: '*'
+
+  # This is an IAM role which authorizes ECS to manage resources on your
+  # account on your behalf, such as updating your load balancer with the
+  # details of where your containers are, so that traffic can reach your
+  # containers.
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers on your behalf
+              # with the information sabout how to send traffic to your containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+            Resource: '*'

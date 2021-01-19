@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: A network stack for my-first-project to understand and learn AWS CloudFormation 
+Description: A network stack for my-Lamp-Stack-on-ECS project. 
 
 Resources:
   
