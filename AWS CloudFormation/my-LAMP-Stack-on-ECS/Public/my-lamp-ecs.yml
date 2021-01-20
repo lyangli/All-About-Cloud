@@ -139,6 +139,7 @@ Resources:
   #Create launch template for ECS's Auto Scaling Group 
   myLampLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
+    DependsOn: EC2InstanceProfile
     Properties:
       LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-ECS'
       LaunchTemplateData:
@@ -330,6 +331,7 @@ Resources:
   
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
+    DependsOn: EC2Role
     Properties:
       Path: /
       Roles: [!Ref 'EC2Role']
@@ -372,3 +374,19 @@ Resources:
               - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
               - 'elasticloadbalancing:RegisterTargets'
             Resource: '*'
+
+
+Outputs:
+
+  myLampDBEndpoint:
+    Description: The database endpoint.
+    Value: !GetAtt myLampDB.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-DB-Endpoint"
+  
+  myLampDBPort:
+    Description: The database port.
+    Value: !GetAtt myLampDB.Endpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-DB-Port"
+  
