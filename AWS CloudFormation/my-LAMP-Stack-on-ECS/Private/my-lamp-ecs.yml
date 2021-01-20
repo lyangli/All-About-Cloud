@@ -1,0 +1,449 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: A AWS CloudFormation stack for my-lamp-stack-on-ECS. All EC2 instances & database reside on Private Subnet.
+
+Parameters:
+  
+  NetworkStackName:
+    Type: String
+    Default: my-lamp-network
+    Description: Stack name for the network stack.
+  
+  KeyName:
+    Type: String
+    Default: aws_first_key
+    Description: AWS key name for SSH connection to server.
+
+  DBInstanceClass:
+    Default: db.t2.micro
+    Description: DB instance class
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+
+  DBAllocatedStorage:
+    Default: '30'
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '1024'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    Default: admin
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    Default: 12345678
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+
+Mappings: 
+  RegionMapToECSAMI: 
+    us-east-1:
+      AMI: ami-0dc161e2e5f144ffc
+    us-east-2:
+      AMI: ami-09f644e1caad2d877
+    us-west-1:
+      AMI: ami-00db7974d178c2536
+    us-west-2:
+      AMI: ami-0d927e3ac55a7b26f
+    eu-west-1:
+      AMI: ami-0024a6c3ca72bd336
+    ap-east-1:
+      AMI: ami-0dc161e2e5f144ffc
+    ap-northeast-1:
+      AMI: ami-0ccf28d7b4966979d
+    ap-southeast-1:
+      AMI: ami-08ce8fab6f3298bec
+
+
+Resources:  
+  
+  # Create ECS Cluster
+  myWebECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
+  
+  # Create ECS Task Definition
+  myLampECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub '${AWS::StackName}-container'
+        Image: lyangli/my-lamp-stack:latest
+        Cpu: 128
+        Memory: 48
+        PortMappings:
+        - ContainerPort: 80
+      Family: my-lamp-task-definition
+      NetworkMode: bridge
+
+  # Create ECS Service
+  myLampECSService:
+    Type: AWS::ECS::Service
+    DependsOn: myLampALBListerner
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-service'
+      Cluster: !Ref myWebECSCluster
+      LaunchType: EC2
+      DesiredCount: 2
+      TaskDefinition: !Ref myLampECSTaskDefinition
+      LoadBalancers:
+      - ContainerName: !Sub '${AWS::StackName}-container'
+        ContainerPort: 80
+        TargetGroupArn: !Ref myLampALBTargetGroup
+
+
+
+  # Create Auto Scaling Group for ECS
+  myLampAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
+      MinSize: 1
+      MaxSize: 3
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 90
+      AvailabilityZones:
+      - !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      - !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      - !Select
+        - 2
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref myLampLaunchTemplate
+        Version: !GetAtt myLampLaunchTemplate.DefaultVersionNumber
+
+  # Create launch template for ECS's Auto Scaling Group 
+  myLampLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    DependsOn: EC2InstanceProfile
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-ECS'
+      LaunchTemplateData:
+        KeyName: !Ref KeyName
+        ImageId: !FindInMap [RegionMapToECSAMI, !Ref "AWS::Region", AMI]
+        InstanceType: t2.micro
+        IamInstanceProfile: 
+          Name: !Ref EC2InstanceProfile
+        SecurityGroupIds:
+          - !GetAtt myLampEC2SecurityGroup.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            echo ECS_CLUSTER=${myWebECSCluster}  >> /etc/ecs/ecs.config
+
+      
+
+  # Create Load Balancer for ECS's service
+  myLampALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref myLampALBSecurityGroup
+      Subnets:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1a"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1b"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PublicSubnet1c"
+
+
+  # Create listener for Application Load Balancer
+  myLampALBListerner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions:
+        - Type: forward
+          ForwardConfig:
+            TargetGroups: 
+              - TargetGroupArn: !Ref myLampALBTargetGroup
+      LoadBalancerArn: !Ref myLampALB
+      Port: 80
+      Protocol: HTTP
+
+  # Create target group for Auto Scaling Group
+  myLampALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 2
+      HealthyThresholdCount: 5
+      HealthCheckPath: /
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      TargetType: instance
+
+
+
+  # Create Security Group for ECS's containers
+  myLampEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH (TCP 22) & HTTP (TCP 80) to instance.
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 32768 
+          ToPort: 65535
+          SourceSecurityGroupId: !GetAtt myLampALBSecurityGroup.GroupId
+
+  # Create Security Group for Application Load Balancer
+  myLampALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP (TCP 80) to Load Balancer.
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+
+  # Create Security Group for database
+  myLampDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows anywhere to MySQL database (TCP 3306) .
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        SourceSecurityGroupId: !GetAtt myLampEC2SecurityGroup.GroupId
+
+  # Create Security Group for ECS's containers
+  myLampEndpointECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows any connection from EC2 Security Group to ECS endpoints.
+      VpcId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0 
+          ToPort: 65535
+          SourceSecurityGroupId: !GetAtt myLampEC2SecurityGroup.GroupId
+
+
+
+  # Create DB Subnet Group for database
+  myLampDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for my-lamp database.
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+
+  # Create database instance
+  myLampDB:
+    Type: AWS::RDS::DBInstance
+    DependsOn: myLampDBSubnetGroup
+    Properties:
+      DBName: mysqldb
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: mysql
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp2
+      PubliclyAccessible: 'false'
+      DBSubnetGroupName: !Ref myLampDBSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref myLampDBSecurityGroup
+
+
+
+  # Create VPC endpoints (ECS Agent, ECS Telemetry, ECS) for ECS services
+  #  reside in Private subnet
+  myLampEndpointECSAgent:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-agent'
+      VpcEndpointType: Interface
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+      SecurityGroupIds:
+      - !Ref myLampEndpointECSSecurityGroup
+
+  myLampEndpointECSTelemetry:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs-telemetry'
+      VpcEndpointType: Interface
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+      SecurityGroupIds:
+      - !Ref myLampEndpointECSSecurityGroup
+
+  myLampEndpointECS:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecs'
+      VpcEndpointType: Interface
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VPCID"
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1a"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1b"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-SubnetID-PrivateSubnet1c"
+      SecurityGroupIds:
+      - !Ref myLampEndpointECSSecurityGroup
+  
+
+
+  # A role used to allow AWS Autoscaling to inspect stats and adjust scaleable targets
+  # on your AWS account
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'application-autoscaling:*'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'ecs:DescribeServices'
+              - 'ecs:UpdateService'
+            Resource: '*'
+
+  # Role for the container instance. This allows the ECS agent on the container instance
+  # to communciate with the ECS control plane, as well as download the docker
+  # images from ECR to run on your host.
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:CreateCluster'
+              - 'ecs:DeregisterContainerInstance'
+              - 'ecs:DiscoverPollEndpoint'
+              - 'ecs:Poll'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:Submit*'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+            Resource: '*'
+  
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn: EC2Role
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+
+  # This is an IAM role which authorizes ECS to manage resources on your
+  # account on your behalf, such as updating your load balancer with the
+  # details of where your containers are, so that traffic can reach your
+  # containers.
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers on your behalf
+              # with the information sabout how to send traffic to your containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+            Resource: '*'
+
+
+Outputs:
+
+  myLampDBEndpoint:
+    Description: The database endpoint.
+    Value: !GetAtt myLampDB.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-DB-Endpoint"
+  
+  myLampDBPort:
+    Description: The database port.
+    Value: !GetAtt myLampDB.Endpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-DB-Port"
+  
